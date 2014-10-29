@@ -1,0 +1,159 @@
+---
+title: "Slave Kinship on Mount Vernon"
+author: "Clio3"
+date: "October 29, 2014"
+output: html_document
+---
+
+This week I used the 1786 and 1799 slave census data from Mount Vernon to visualize the kinship network. 
+
+```{r}
+library(igraph)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(historydata)
+library(sna)
+```
+
+Read in the slave relationship file.
+
+```{r}
+slaverel <- read.csv("~//Desktop//slaveRelationships.csv")
+head(slaverel)
+```
+
+Read in the entire slave census and only select a few variables. 
+
+```{r}
+cleanslaves <- read.csv("~//Desktop/cleanslaves.csv")
+slave_census <- cleanslaves %>%
+  select(id, Gender, Skill, Farm, Census, Owner)
+head(slave_census)
+```
+
+Extract out only the 1786 and 1799 census data.
+
+```{r}
+slave_census_1786 <- slave_census %>%
+  filter(Census == "1786")
+```
+
+```{r}
+slave_census_1799 <- slave_census %>%
+  filter(Census == "1799")
+```
+
+Join the slave relationships and slave census data.
+
+```{r}
+slave_network <- slaverel %>%
+  left_join(slave_census, by = "id")
+```
+
+Extract out both the 1786 and 1799 relationships.
+
+```{r}
+slave_net_1786 <- slave_network %>%
+  filter(Census == "1786") %>%
+  select(id, id2, Relationship)
+```
+
+```{r}
+slave_net_1799 <- slave_network %>%
+  filter(Census == "1799") %>%
+  select(id, id2, Relationship)
+```
+
+Transform the relationship data frames into graph objects
+
+```{r}
+slave_graph_1786 <- graph.data.frame(slave_net_1786, directed = "FALSE")
+```
+
+```{r}
+slave_graph_1799 <- graph.data.frame(slave_net_1799, directed = "FALSE")
+```
+
+Plot the first network graphs.
+
+```{r}
+plot(slave_graph_1786)
+```
+
+```{r}
+plot(slave_graph_1799)
+```
+
+You can see these initial graphs are not helpful. Let's explore each further.
+
+#1786 Kinship Network
+Change the size of the vertices and remove the person labels.
+```{r}
+igraph.options(vertex.size=3, vertex.label=NA,
+               edge.arrow.size=.5)
+plot(slave_graph_1786)
+```
+
+The vertex attributes show up as edges, so I rejoined things in order to make the vertex attributes correct.
+
+```{r}
+slave_vertex_1786 <- data_frame(name = V(slave_graph_1786)$name)
+slave_vertex_1786 <- slave_net_1786 %>%
+  left_join(slave_census_1786, by = "id")
+```
+
+Change the shape of the Gender vertex.
+
+```{r}
+V(slave_graph_1786)$shape <- ifelse(slave_vertex_1786$Gender == "Female", "circle", "square")
+plot(slave_graph_1786)
+```
+
+The square on square spousal relationship is probably an error in the data. Slaves with unknown spouses are in the census, but not the spouse. These double square "marriages" are most likely the unknown spouses.
+
+
+Color the Child edge in order to see all the children relationships.
+
+```{r}
+E(slave_graph_1786)$color <- ifelse(E(slave_graph_1786)$Relationship == "Child",
+                                    "orange", "gray")
+plot(slave_graph_1786)
+```
+
+I'm interested in seeing the distribution of spouses across the entire estate. If spouses lived often on different farms, then they might have exercised more mobility over those spouses residing on the same farm. 
+
+```{r}
+E(slave_graph_1786)$color <- ifelse(E(slave_graph_1786)$Relationship == "Spouse",
+                                    "red", "gray")
+plot(slave_graph_1786)
+```
+
+Instead of copying and pasting code to color each farm, let's combine them all into one function and plot all the different colored farms on one graph.
+
+```{r}
+lookup_color <- function(type) {
+  require(stringr)
+  if(type == "Mansion House") return("purple")
+  if(type == "Muddy Hole") return("blue")
+  if(type == "Dogue Run") return("green")
+  if(type == "Ferry Farm") return("orange")
+  if(type == "River Farm") return("yellow")
+  else return("gray")
+} 
+lookup_color <- Vectorize(lookup_color, USE.NAMES = FALSE)
+
+V(slave_graph_1786)$color <- lookup_color(slave_vertex_1786$Farm)
+```
+
+
+```{r}
+plot(slave_graph_1786, 
+     vertex.label = NA,      
+     vertex.size = 3)
+title("Slave Spouses on Mount Vernon Farms in 1786")
+legend("bottomleft", legend = c("Mansion House", "Muddy Hole", "Dogue Run", "Ferry Farm", "Union Farm"),
+       col = c("purple", "blue", "green", "orange", "yellow"), pch = 19,   
+       title = "Farm")
+```
+
